@@ -1527,19 +1527,22 @@ html.lenis, html.lenis body {
 /* Responsive adjustments for mobile screens */
 @media (max-width: 768px) {
   .hanging-sign-container {
-    top: 0px;
+    top: clamp(64px, 10vh, 100px);
   }
   .hanging-sign-board {
-    width: 220px;
-    max-width: 68vw;
+    width: 205px;
+    max-width: 64vw;
     filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.45));
   }
 }
 
 @media (max-width: 480px) {
+  .hanging-sign-container {
+    top: clamp(58px, 9.8vh, 90px);
+  }
   .hanging-sign-board {
-    width: 195px;
-    max-width: 62vw;
+    width: 180px;
+    max-width: 58vw;
   }
 }
 
