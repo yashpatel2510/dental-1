@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Lenis from 'lenis';
+import { Analytics } from '@vercel/analytics/react';
 import Section1Storefront from './components/Section1Storefront';
 import Section2Merged from './components/Section2Merged';
 
@@ -111,6 +112,9 @@ export default function App() {
         isVisible={activeSection === 1}
         onScrollTop={() => scrollToSection(0)}
       />
+      
+      {/* Vercel Web Analytics */}
+      <Analytics />
     </main>
   );
 }
