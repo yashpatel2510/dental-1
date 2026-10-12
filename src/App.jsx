@@ -112,7 +112,7 @@ export default function App() {
         isVisible={activeSection === 1}
         onScrollTop={() => scrollToSection(0)}
       />
-      
+
       {/* Vercel Web Analytics */}
       <Analytics />
     </main>
