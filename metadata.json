@@ -1,0 +1,6 @@
+{
+  "name": "DentPulse - Dental WhatsApp CRM & Booking Assistant",
+  "description": "WhatsApp automated booking bot, live patient chat inbox, appointment pipeline, CRM, bot flow editor, and Google Sheets sync for modern dental practices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
