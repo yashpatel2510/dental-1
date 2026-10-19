@@ -364,6 +364,20 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Meta Webhook Verification Note */}
+                <div className="p-3 bg-amber-50/90 rounded-lg border border-amber-200/80 text-[11px] text-amber-950 space-y-1">
+                  <div className="font-extrabold flex items-center gap-1.5 text-amber-900">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Seeing "Callback URL or verify token couldn't be validated"?</span>
+                  </div>
+                  <p className="text-amber-900/90 leading-relaxed">
+                    The AI Studio preview environment (<code>ais-dev-*.run.app</code>) requires Google sign-in cookies, which redirects Meta's automated verification servers with HTTP 302.
+                  </p>
+                  <p className="text-amber-900/90 leading-relaxed">
+                    <strong>Solution for Live WhatsApp:</strong> Deploy your GitHub repo (e.g. to Render, Railway, or Cloud Run) or run locally with <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-amber-950">ngrok http 3000</code> and paste that URL into Meta.
+                  </p>
+                </div>
               </div>
             </div>
 
