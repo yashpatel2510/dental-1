@@ -1,6 +1,13 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { processBotMessage, DEFAULT_REASONS } from '../utils/bot-engine';
+import {
+  isPlaceholderCredential,
+  isValidMetaPhoneNumberId,
+  isValidMetaAccessToken,
+  diagnoseMetaGraphApiError,
+  type MetaErrorDiagnosis
+} from '../utils/meta-credentials-utils';
 
 dotenv.config();
 
@@ -13,7 +20,11 @@ export const whatsappConfig = {
   accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
   verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || 'smilecraft_dental_secret_2026',
   businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
-  isConnected: Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)
+  isConnected: Boolean(
+    isValidMetaPhoneNumberId(process.env.WHATSAPP_PHONE_NUMBER_ID) &&
+    isValidMetaAccessToken(process.env.WHATSAPP_ACCESS_TOKEN)
+  ),
+  lastError: null as MetaErrorDiagnosis | null
 };
 
 // In-memory conversation state for live WhatsApp sessions
@@ -36,9 +47,21 @@ export const liveEvents: LiveWhatsAppEvent[] = [];
 
 // Helper function to send message via Meta Graph API
 export async function sendMetaWhatsAppMessage(toPhone: string, text: string, options?: string[]) {
-  if (!whatsappConfig.accessToken || !whatsappConfig.phoneNumberId) {
-    console.log('[WhatsApp Gateway Simulator] Meta credentials not set. Message queued locally:', { toPhone, text });
-    return { success: true, simulated: true };
+  // Check if credentials are missing or are placeholder strings (e.g. YOUR_META_ACCESS_TOKEN)
+  const hasValidPhoneId = isValidMetaPhoneNumberId(whatsappConfig.phoneNumberId);
+  const hasValidToken = isValidMetaAccessToken(whatsappConfig.accessToken);
+
+  if (!hasValidPhoneId || !hasValidToken) {
+    console.log('[WhatsApp Gateway Simulator] Meta credentials not set or using placeholders. Message handled locally via CRM simulator:', {
+      toPhone,
+      textPreview: text.slice(0, 60),
+      reason: !whatsappConfig.phoneNumberId ? 'missing_credentials' : 'placeholder_credentials'
+    });
+    return {
+      success: true,
+      simulated: true,
+      note: 'Delivered in local CRM simulator mode (Meta credentials not configured)'
+    };
   }
 
   try {
@@ -81,15 +104,32 @@ export async function sendMetaWhatsAppMessage(toPhone: string, text: string, opt
 
     const data = await response.json();
     if (!response.ok) {
-      console.error('[Meta Graph API Error]:', data);
-      return { success: false, error: data };
+      const diagnosis = diagnoseMetaGraphApiError(data);
+      whatsappConfig.lastError = diagnosis;
+      console.warn(`[Meta Graph API Handled]: ${diagnosis.title} - ${diagnosis.explanation}`);
+      // Return gracefully so CRM operations (reminders, booking approvals) do not crash
+      return {
+        success: false,
+        simulatedFallback: true,
+        error: data,
+        diagnosis
+      };
     }
 
+    // Reset lastError on verified success
+    whatsappConfig.lastError = null;
     console.log('[Meta Graph API Success]: Message dispatched to', toPhone);
     return { success: true, data };
   } catch (err: any) {
     console.error('[Meta Graph API Exception]:', err.message);
-    return { success: false, error: err.message };
+    const diagnosis = diagnoseMetaGraphApiError({ error: { message: err.message, type: 'NetworkException' } });
+    whatsappConfig.lastError = diagnosis;
+    return {
+      success: false,
+      simulatedFallback: true,
+      error: err.message,
+      diagnosis
+    };
   }
 }
 
@@ -255,7 +295,11 @@ app.get('/api/whatsapp/live-feed', (_req: Request, res: Response) => {
     isConnected: whatsappConfig.isConnected,
     phoneNumberId: whatsappConfig.phoneNumberId,
     businessAccountId: whatsappConfig.businessAccountId,
-    verifyToken: whatsappConfig.verifyToken
+    verifyToken: whatsappConfig.verifyToken,
+    lastError: whatsappConfig.lastError,
+    isPlaceholder:
+      isPlaceholderCredential(whatsappConfig.phoneNumberId) ||
+      isPlaceholderCredential(whatsappConfig.accessToken)
   });
 });
 
@@ -321,7 +365,11 @@ app.get('/api/whatsapp/config', (req: Request, res: Response) => {
     businessAccountId: whatsappConfig.businessAccountId,
     isConnected: whatsappConfig.isConnected,
     webhookUrl: `${appUrl}/api/whatsapp/webhook`,
-    hasAccessToken: Boolean(whatsappConfig.accessToken)
+    hasAccessToken: Boolean(whatsappConfig.accessToken),
+    lastError: whatsappConfig.lastError,
+    isPlaceholder:
+      isPlaceholderCredential(whatsappConfig.phoneNumberId) ||
+      isPlaceholderCredential(whatsappConfig.accessToken)
   });
 });
 
@@ -333,12 +381,20 @@ app.post('/api/whatsapp/config', (req: Request, res: Response) => {
   if (verifyToken !== undefined) whatsappConfig.verifyToken = verifyToken.trim() || 'smilecraft_dental_secret_2026';
   if (businessAccountId !== undefined) whatsappConfig.businessAccountId = businessAccountId.trim();
 
-  whatsappConfig.isConnected = Boolean(whatsappConfig.phoneNumberId && whatsappConfig.accessToken);
+  // Validate non-placeholder credentials
+  whatsappConfig.isConnected = Boolean(
+    isValidMetaPhoneNumberId(whatsappConfig.phoneNumberId) &&
+    isValidMetaAccessToken(whatsappConfig.accessToken)
+  );
+  whatsappConfig.lastError = null; // Clear previous errors on credential change
 
   return res.json({
     success: true,
     isConnected: whatsappConfig.isConnected,
-    verifyToken: whatsappConfig.verifyToken
+    verifyToken: whatsappConfig.verifyToken,
+    isPlaceholder:
+      isPlaceholderCredential(whatsappConfig.phoneNumberId) ||
+      isPlaceholderCredential(whatsappConfig.accessToken)
   });
 });
 
@@ -353,15 +409,39 @@ app.post('/api/whatsapp/test-connection', async (req: Request, res: Response) =>
     });
   }
 
+  // Detect placeholder credentials immediately before making network calls
+  if (isPlaceholderCredential(whatsappConfig.phoneNumberId) || isPlaceholderCredential(whatsappConfig.accessToken)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Placeholder credentials detected (e.g. "YOUR_META_..."). Please enter your real Phone Number ID and Access Token from the Meta Developer Dashboard.',
+      diagnosis: {
+        isOAuthException: false,
+        type: 'PlaceholderCredentials',
+        title: 'Placeholder Credentials Detected',
+        explanation: 'Your configuration currently contains placeholder text instead of real Meta API credentials.',
+        actionSteps: [
+          'Visit developers.facebook.com > Your App > WhatsApp > API Setup.',
+          'Copy your numeric "Phone number ID" (e.g. 15-digit number).',
+          'Copy your Temporary Access Token or System User Token.',
+          'Paste them here and click "Save & Test Connection".'
+        ]
+      }
+    });
+  }
+
   try {
     const phoneInfoUrl = `https://graph.facebook.com/v21.0/${whatsappConfig.phoneNumberId}?access_token=${whatsappConfig.accessToken}`;
     const checkRes = await fetch(phoneInfoUrl);
     const phoneData = await checkRes.json();
 
     if (!checkRes.ok) {
+      const diagnosis = diagnoseMetaGraphApiError(phoneData);
+      whatsappConfig.lastError = diagnosis;
       return res.status(400).json({
         success: false,
-        error: phoneData.error?.message || 'Meta API returned an error verifying Phone Number ID.'
+        error: `${diagnosis.title}: ${diagnosis.explanation}`,
+        diagnosis,
+        rawMetaError: phoneData
       });
     }
 
@@ -371,7 +451,19 @@ app.post('/api/whatsapp/test-connection', async (req: Request, res: Response) =>
         testPhone,
         '🦷 *SmileCraft Dental:* Congratulations! Your WhatsApp Business Cloud API is connected successfully with DentPulse CRM!'
       );
+
+      if (testMessageResult && testMessageResult.success === false && testMessageResult.diagnosis) {
+        return res.status(400).json({
+          success: false,
+          error: `${testMessageResult.diagnosis.title}: ${testMessageResult.diagnosis.explanation}`,
+          diagnosis: testMessageResult.diagnosis,
+          testMessageResult
+        });
+      }
     }
+
+    whatsappConfig.isConnected = true;
+    whatsappConfig.lastError = null;
 
     return res.json({
       success: true,
@@ -379,9 +471,12 @@ app.post('/api/whatsapp/test-connection', async (req: Request, res: Response) =>
       testMessageResult
     });
   } catch (err: any) {
+    const diagnosis = diagnoseMetaGraphApiError({ error: { message: err.message } });
+    whatsappConfig.lastError = diagnosis;
     return res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
+      diagnosis
     });
   }
 });

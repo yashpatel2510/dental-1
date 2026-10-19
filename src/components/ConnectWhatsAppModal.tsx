@@ -38,6 +38,13 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({
   const [testStatus, setTestStatus] = useState<{
     success?: boolean;
     message?: string;
+    diagnosis?: {
+      isOAuthException?: boolean;
+      type?: string;
+      title?: string;
+      explanation?: string;
+      actionSteps?: string[];
+    };
   } | null>(null);
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -55,6 +62,13 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({
         if (data.phoneNumberId) setPhoneNumberId(data.phoneNumberId);
         if (data.verifyToken) setVerifyToken(data.verifyToken);
         if (data.businessAccountId) setBusinessAccountId(data.businessAccountId);
+        if (data.lastError) {
+          setTestStatus({
+            success: false,
+            message: `${data.lastError.title}: ${data.lastError.explanation}`,
+            diagnosis: data.lastError
+          });
+        }
       })
       .catch(() => {});
   }, []);
@@ -144,7 +158,8 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({
       } else {
         setTestStatus({
           success: false,
-          message: data.error || 'Connection check failed. Please verify your credentials.'
+          message: data.error || 'Connection check failed. Please verify your credentials.',
+          diagnosis: data.diagnosis
         });
       }
     } catch (err: any) {
@@ -484,18 +499,40 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({
 
             {testStatus && (
               <div
-                className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                className={`p-3.5 rounded-xl text-xs space-y-2 ${
                   testStatus.success
-                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                    : 'bg-rose-100 text-rose-900 border border-rose-300'
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-950 border border-rose-200'
                 }`}
               >
-                {testStatus.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <div className="flex items-start gap-2">
+                  {testStatus.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <span className="font-bold block">
+                      {testStatus.diagnosis?.title || testStatus.message}
+                    </span>
+                    {testStatus.diagnosis && (
+                      <p className="text-[11px] text-rose-800 leading-relaxed font-normal">
+                        {testStatus.diagnosis.explanation}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {testStatus.diagnosis?.actionSteps && testStatus.diagnosis.actionSteps.length > 0 && (
+                  <div className="pl-6 pt-1 text-[11px] text-rose-900 border-t border-rose-200/60 mt-1">
+                    <span className="font-bold block mb-1">Recommended Fix:</span>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      {testStatus.diagnosis.actionSteps.map((step, idx) => (
+                        <li key={idx}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
                 )}
-                <span>{testStatus.message}</span>
               </div>
             )}
 

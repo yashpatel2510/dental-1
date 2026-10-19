@@ -69,6 +69,7 @@ export default function App() {
 
   // Live Meta WhatsApp Cloud API connection status & synchronization
   const [isWhatsAppApiConnected, setIsWhatsAppApiConnected] = useState<boolean>(false);
+  const [metaDiagnosis, setMetaDiagnosis] = useState<{ title: string; explanation: string; actionSteps?: string[] } | null>(null);
   const processedEventIdsRef = useRef<Set<string>>(new Set());
 
   // Simple Synthesizer Audio Chime for incoming booking / alert
@@ -160,6 +161,11 @@ export default function App() {
         if (!isMounted) return;
 
         setIsWhatsAppApiConnected(Boolean(data.isConnected));
+        if (data.lastError) {
+          setMetaDiagnosis(data.lastError);
+        } else {
+          setMetaDiagnosis(null);
+        }
 
         if (Array.isArray(data.events)) {
           for (const ev of data.events) {
@@ -1073,6 +1079,25 @@ export default function App() {
           isSimulatorOpen ? 'lg:pr-[420px]' : ''
         }`}
       >
+        {metaDiagnosis && (
+          <div className="mb-4 p-3.5 bg-amber-50/95 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950 shadow-xs animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <span className="px-2 py-0.5 bg-amber-200/80 rounded-md text-amber-900 font-bold shrink-0 text-[10px] uppercase tracking-wider mt-0.5 sm:mt-0">
+                Meta Status
+              </span>
+              <div>
+                <span className="font-bold">{metaDiagnosis.title}: </span>
+                <span className="text-amber-800">{metaDiagnosis.explanation}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsConnectWhatsAppModalOpen(true)}
+              className="px-3 py-1.5 bg-amber-900 hover:bg-amber-950 text-white font-bold text-xs rounded-xl transition-colors shrink-0 self-end sm:self-auto"
+            >
+              Update Credentials
+            </button>
+          </div>
+        )}
         {activeTab === 'overview' && (
           <OverviewTab
             bookings={bookings}
